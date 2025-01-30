@@ -19,7 +19,7 @@ Section 1: Phenomena of interest
 Section 2: Relevant Works 
 
 Source #1:
-- Brown, M. A., Nagler, J., Bisbee, J., Lai, A., & Tucker, J. A. (2023, October 26). Echo chambers, rabbit holes, and ideological bias: How YouTube recommends content to real users. Brookings Institute. https://www.brookings.edu/articles/echo-chambers-rabbit-holes-and-ideological-bias-how-youtube-recommends-content-to-real-users/
+- Brown, M. A., Nagler, J., Bisbee, J., Lai, A., & Tucker, J. A. (2023, October 26). Echo chambers, rabbit holes, and ideological bias: How YouTube recommends content to real users. Brookings Institute. www.brookings.edu/articles/echo-chambers-rabbit-holes-and-ideological-bias-how-youtube-recommends-content-to-real-users/
 
 Source #2:
-- Grusauskaite, K., Carbone, L., Harambam, J., & Aupers, S. (2024). Debating (in) echo chambers: How culture shapes communication in conspiracy theory networks on YouTube. New Media & Society, 26(12), 7037–7057. https://doi.org/10.1177/14614448231162585
+- Grusauskaite, K., Carbone, L., Harambam, J., & Aupers, S. (2024). Debating (in) echo chambers: How culture shapes communication in conspiracy theory networks on YouTube. New Media & Society, 26(12), 7037–7057. doi.org/10.1177/14614448231162585
