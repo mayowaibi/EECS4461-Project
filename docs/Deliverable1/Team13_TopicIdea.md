@@ -3,9 +3,9 @@
 **Github Repo:** [EECS4461-Project](https://github.com/mayowaibi/EECS4461-Project)
 
 ## Team Members:
-Isaac IBIDUN
-Simon LI
-Vincent TRAN
+- Isaac IBIDUN
+- Simon LI
+- Vincent TRAN
 
 Section 1: Phenomena of interest 
 - An echo chamber is a phenomenon that occurs in a media ecosystem where individuals (humans) are exposed to content/information that reinforces their existing beliefs while deterring them away from any alternative viewpoints that contradict it.
@@ -17,7 +17,9 @@ Section 1: Phenomena of interest
 - Key dynamics: bot-driven content amplification, selective exposure, reinforcement loops.
 
 Section 2: Relevant Works 
+
 Source #1:
-Brown, M. A., Nagler, J., Bisbee, J., Lai, A., & Tucker, J. A. (2023, October 26). Echo chambers, rabbit holes, and ideological bias: How YouTube recommends content to real users. Brookings Institute. https://www.brookings.edu/articles/echo-chambers-rabbit-holes-and-ideological-bias-how-youtube-recommends-content-to-real-users/
+- Brown, M. A., Nagler, J., Bisbee, J., Lai, A., & Tucker, J. A. (2023, October 26). Echo chambers, rabbit holes, and ideological bias: How YouTube recommends content to real users. Brookings Institute. https://www.brookings.edu/articles/echo-chambers-rabbit-holes-and-ideological-bias-how-youtube-recommends-content-to-real-users/
+
 Source #2:
-Grusauskaite, K., Carbone, L., Harambam, J., & Aupers, S. (2024). Debating (in) echo chambers: How culture shapes communication in conspiracy theory networks on YouTube. New Media & Society, 26(12), 7037–7057. https://doi.org/10.1177/14614448231162585
+- Grusauskaite, K., Carbone, L., Harambam, J., & Aupers, S. (2024). Debating (in) echo chambers: How culture shapes communication in conspiracy theory networks on YouTube. New Media & Society, 26(12), 7037–7057. https://doi.org/10.1177/14614448231162585
