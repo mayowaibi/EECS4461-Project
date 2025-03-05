@@ -1,10 +1,12 @@
 from mesa import Agent
 
+# type = 0 : user, 1 : social bot, 2 : algorithm
+# preference = 0 : video games, 1 : sports, 2 : politics
 
 class SchellingAgent(Agent):
     """Schelling segregation agent."""
 
-    def __init__(self, model, agent_type: int) -> None:
+    def __init__(self, model, agent_type: int, agent_preference: int) -> None:
         """Create a new Schelling agent.
         Args:
             model: The model instance the agent belongs to
@@ -12,6 +14,7 @@ class SchellingAgent(Agent):
         """
         super().__init__(model)
         self.type = agent_type
+        self.preference = agent_preference
 
     def step(self) -> None:
         """Determine if agent is happy and move if necessary."""
