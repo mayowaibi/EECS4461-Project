@@ -42,29 +42,42 @@ class SchellingAgent(Agent):
             self.pos, moore=True, radius=self.model.radius
         )
 
-        # Count neighbors with same content preference
-        similar_neighbors = len([n for n in neighbors if n.preference == self.preference])
-        
-        # Count social bot neighbors
-        bot_neighbors = len([n for n in neighbors if n.type == 1])
-
-        # Calculate the fraction of similar neighbors
-        if (valid_neighbors := len(neighbors)) > 0:
-            # Basic similarity based on content preference
-            similarity_fraction = similar_neighbors / valid_neighbors
-            
-            # Social bot neighbors amplify the echo chamber effect
-            if self.type == 0:  # If human user
-                # Increase similarity effect based on social bot presence
-                bot_influence = (bot_neighbors / valid_neighbors) * 0.2  # 20% boost from bots
-                similarity_fraction = min(1.0, similarity_fraction + bot_influence)
-        else:
+        if not neighbors:
             similarity_fraction = 0.0
+        else:
+            # 1. Content Preference Matching (50% of happiness)
+            similar_content = len([n for n in neighbors if n.preference == self.preference])
+            content_similarity = similar_content / len(neighbors)
+            
+            # 2. AI/Bot Influence (30% of happiness)
+            if self.type == 0:  # Only humans are influenced by bots
+                bot_neighbors = len([n for n in neighbors if n.type == 1])
+                bot_similarity = len([n for n in neighbors 
+                                    if n.type == 1 and n.preference == self.preference])
+                if bot_neighbors > 0:
+                    bot_influence = (bot_similarity / bot_neighbors) * 0.3
+                else:
+                    bot_influence = 0.0
+            else:
+                bot_influence = 0.0
+            
+            # 3. Engagement-based Modification (20% of happiness)
+            engagement_factor = (self.likes * 0.05 + 
+                               self.comments * 0.10 + 
+                               self.shares * 0.15) / len(neighbors)
+            engagement_factor = min(0.2, engagement_factor)  # Cap at 20% influence
+            
+            # Combine all factors
+            similarity_fraction = (content_similarity * 0.5 +  # Content matching (50%)
+                                 bot_influence +              # Bot influence (30%)
+                                 engagement_factor)           # Engagement (20%)
+            
+            similarity_fraction = min(1.0, similarity_fraction)  # Cap at 1.0
 
         # Update engagement and homophily based on local environment
         self._update_engagement_and_homophily(similarity_fraction)
 
-        # Move if unhappy (different logic based on agent type)
+        # Move if unhappy
         if similarity_fraction < self.current_homophily:
             self.model.grid.move_to_empty(self)
         else:
