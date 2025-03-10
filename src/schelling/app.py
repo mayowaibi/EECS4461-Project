@@ -5,17 +5,17 @@ from mesa.visualization import (
     make_plot_component,
     make_space_component,
 )
-from model import Echochamber  # Updated to match Isaac's model
-from agents import UserAgent, AIAgent # Assuming that these will be implemented in agents.py
+from model import Echochamber  
+from agents import SchellingAgent  # Updated to match agents.py
 
 # Agent Portrayal Function 
-def agent_portrayal(agent):
+def agent_portrayal(agent: SchellingAgent):
     """Defines how agents are displayed in the visualization based on content preference."""
-    content_colors = {0: "tab:orange", 1: "tab:blue"}  # 0 = Orange, 1 = Blue
+    content_colors = {0: "tab:orange", 1: "tab:blue"} 
     portrayal = {
-        "color": content_colors.get(agent.content_preference, "gray"),  # Ensure content preference drives color
-        "marker": "o" if isinstance(agent, UserAgent) else "s",  # Humans = Circle, AI = Square
-        "size": 10 + (agent.engagement * 5),  # Scale size based on engagement
+        "color": content_colors.get(agent.preference, "gray"),  
+        "marker": "o" if agent.type == 0 else "s",  
+        "size": 10 + (agent.engagement_rate * 5),  
         "text_color": "white",
     }
     return portrayal
@@ -41,25 +41,25 @@ model = Echochamber(
 )
 
 # Visualization Components
-HappyPlot = make_plot_component({"happy": "tab:green"})  # Tracks "happy" agents
+HappyPlot = make_plot_component({"happy": "tab:green"})  
 EngagementPlot = make_plot_component({
     "avg_human_engagement": "tab:blue", 
     "avg_ai_engagement": "tab:red"
 })  
-
-AIClusterPlot = make_plot_component({"ai_cluster_pct": "tab:purple"})  # AI clustering metric
+AIClusterPlot = make_plot_component({"ai_cluster_pct": "tab:purple"})  
 
 # Create Solara Visualization
 page = SolaraViz(
     model,
     components=[
-        make_space_component(agent_portrayal),  # Agent grid visualization
-        HappyPlot,  # Happy agent count
-        EngagementPlot,  # Engagement trend plot
-        AIClusterPlot,  # AI Clustering visualization
+        make_space_component(agent_portrayal),  
+        HappyPlot,  
+        EngagementPlot,  
+        AIClusterPlot,  
     ],
     model_params=model_params,
 )
 
 if __name__ == "__main__":
-    page  
+    page
+  
