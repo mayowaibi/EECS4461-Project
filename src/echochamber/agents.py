@@ -3,7 +3,7 @@ from mesa import Agent
 # type = 0 : user, 1 : social bot
 # preference = 0 : video games, 1 : sports, 2 : politics
 
-class SchellingAgent(Agent):
+class EchoChamberAgent(Agent):
     """
     Agent class for YouTube echo chamber simulation.
     Types: Human (0), Social Bot (1)

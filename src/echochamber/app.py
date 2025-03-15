@@ -5,19 +5,19 @@ from mesa.visualization import (
     make_plot_component,
     make_space_component,
 )
-from model import Echochamber  
-from agents import SchellingAgent  
+from model import EchoChamber  
+from agents import EchoChamberAgent  
 
 # Function to create a new model instance when needed
 def create_model():
-    return Echochamber(
+    return EchoChamber(
         width=20, height=20, density=0.8, 
         human_homophily=0.4, ai_homophily=0.4, 
         human_engagement=0.5, ai_engagement=0.5, ai_ratio=0.5
     )
 
 # Agent Portrayal Function 
-def agent_portrayal(agent: SchellingAgent):
+def agent_portrayal(agent: EchoChamberAgent):
     """Defines how agents are displayed in the visualization based on content preference."""
     content_colors = {0: "tab:orange", 1: "tab:blue", 2: "tab:red"}  
     portrayal = {
@@ -42,20 +42,15 @@ model_params = {
 }
 
 # Visualization Components
-HappyPlot = make_plot_component({"happy": "tab:green"})  
-EngagementPlot = make_plot_component({
-    "total_human_engagement": "tab:blue", 
-    "total_ai_engagement": "tab:red"
-})  
-AIClusterPlot = make_plot_component({"ai_cluster_pct": "tab:purple"})  
+HappyPlot = make_plot_component({"Happy Agents": "tab:green"})  
+AIClusterPlot = make_plot_component({"AI Cluster Percentage": "tab:purple"})  
 
 # Create Solara Visualization
 page = SolaraViz(
     create_model(),  # Use function instead of direct initialization
     components=[
         make_space_component(agent_portrayal),  
-        HappyPlot,  
-        EngagementPlot,  
+        HappyPlot,
         AIClusterPlot,  
     ],
     model_params=model_params,

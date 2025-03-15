@@ -1,11 +1,11 @@
 from mesa import Model
 from mesa.datacollection import DataCollector
 from mesa.space import SingleGrid
-from agents import SchellingAgent  
+from agents import EchoChamberAgent  
 import random
 
-class Echochamber(Model):
-    """Model class for the YouTube Echo Chamber model."""
+class EchoChamber(Model):
+    """Model class for the YouTube Echo chamber model."""
 
     def __init__(
         self,
@@ -64,16 +64,10 @@ class Echochamber(Model):
         # Set up data collection
         self.datacollector = DataCollector(
             model_reporters={
-                "happy": lambda m: m.happy / len(m.agent_list) if len(m.agent_list) > 0 else 0,  
-                "ai_cluster_pct": lambda m: (
+                "Happy Agents": lambda m: m.happy / len(m.agent_list) if len(m.agent_list) > 0 else 0,  
+                "AI Cluster Percentage": lambda m: (
                     sum(1 for a in m.agent_list if a.type == 1 and a.bot_cluster_size > 1) / len(m.agent_list) * 100
                     if len(m.agent_list) > 0 else 0
-                ),
-                "total_human_engagement": lambda m: (
-                    sum(a.likes + a.comments + a.shares for a in m.agent_list if a.type == 0)
-                ),
-                "total_ai_engagement": lambda m: (
-                    sum(a.likes + a.comments + a.shares for a in m.agent_list if a.type == 1)
                 ),
             },
             # Will be used as improvement for DEL 4 (To be deleted)
@@ -94,7 +88,7 @@ class Echochamber(Model):
                     random.uniform(0.5, 1.0) * ai_engagement if is_ai else random.uniform(0.2, 1.0) * human_engagement
                 )
                 
-                agent = SchellingAgent(
+                agent = EchoChamberAgent(
                     model=self,
                     agent_type=1 if is_ai else 0,  # AI = 1, Human = 0
                     content_preference=preference,
