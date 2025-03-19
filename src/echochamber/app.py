@@ -1,4 +1,6 @@
 import solara
+import numpy as np
+import matplotlib.pyplot as plt
 from mesa.visualization import (
     Slider,
     SolaraViz,
@@ -22,9 +24,9 @@ def agent_portrayal(agent: EchoChamberAgent):
     content_colors = {0: "tab:orange", 1: "tab:blue", 2: "tab:red"}  
     portrayal = {
         "color": content_colors.get(agent.preference, "gray"),  
-        "marker": "o" if agent.type == 0 else ("^" if agent.bot_cluster_size > 1 else "s"),  
+        "marker": "o" if agent.type == 0 else ("s" if agent.type == 1 else "^"),  # Humans: Circles, Bots: Squares, AI: Triangles
         "size": 10 + (agent.engagement_rate * 5),  
-        "alpha": min(1.0, 0.5 + agent.amplification_power * 0.2),  # Bots with more influence are more visible
+        "alpha": min(1.0, 0.5 + agent.amplification_power * 0.4),  # Bots with more influence are more visible
     }
     return portrayal
 
@@ -44,14 +46,33 @@ model_params = {
 # Visualization Components
 HappyPlot = make_plot_component({"Happy Agents": "tab:green"})  
 AIClusterPlot = make_plot_component({"AI Cluster Percentage": "tab:purple"})  
+#EngagementPlot = make_plot_component({"Engagement": "tab:orange"})  # Engagement trends (waiting for model.py update)
+
+# Heatmap Function (Can be removed if we decide not to implement this feature in model.py) 
+# def overlay_heatmap(agent_grid, model):
+#    """Overlays AI influence as a heatmap directly on the agent grid."""
+#    if hasattr(model, "ai_influence_map"):
+#        data = np.array(model.ai_influence_map)  
+#        fig, ax = plt.subplots()
+#        ax.imshow(data, cmap="hot", alpha=0.5, interpolation="nearest")  
+#        ax.set_xticks([])
+#        ax.set_yticks([])
+#        return fig  
+#    return None
+
+
+# --- Placeholder for Recommendation Algorithm (Waiting on agents.py update) ---
+
 
 # Create Solara Visualization
 page = SolaraViz(
     create_model(),  # Use function instead of direct initialization
     components=[
         make_space_component(agent_portrayal),  
+        # overlay_heatmap,  # Heatmap overlaying agent grid (can be removed if we chose not to implement)  
         HappyPlot,
-        AIClusterPlot,  
+        AIClusterPlot,
+        #EngagementPlot,  # Engagement trends (waiting for model.py update)
     ],
     model_params=model_params,
 )
