@@ -38,7 +38,7 @@ class EchoChamberAgent(Agent):
         # Echo chamber strength (affects and is affected by engagement)
         self.echo_chamber_strength = 0.0
         
-        # AI-specific attributes (including Reinforcement Learning)
+        # AI-specific attributes, including Reinforcement Learning (RL)
         if self.type == 1:  # AI Agent
             self.ai_subtype = ai_subtype
             self.amplification_power = 1.0
@@ -51,28 +51,21 @@ class EchoChamberAgent(Agent):
             self.exploration_rate = 0.2 # 20% chance to try new actions
             self.action_history = [] # Track what actions were taken
             
-            # Base Q-values (action values)
-            self.q_values = {
-                'engage': 0.0,      # Value of engaging with content
-                'amplify': 0.0,     # Value of amplifying content
-                'connect': 0.0,     # Value of forming connections
-            }
-            self.rewards = {
-                'influence_success': 0.6,  # Reward for successfully influencing others
-                'engagement_growth': 0.4,  # Reward for increasing engagement
-            }
-
             if self.ai_subtype == 0:  # Social Bot
-                # Add bot-specific Q-values
-                self.q_values.update({
-                    'cluster': 0.0,     # Value of joining/forming bot clusters
+                # Bot-specific Q-values - only what's used in _execute_bot_action
+                self.q_values = {
+                    'cluster': 0.0,     # Value of joining/forming clusters
                     'coordinate': 0.0,  # Value of coordinating with other bots
-                })
-                # Add bot-specific rewards
-                self.rewards.update({
-                    'cluster_growth': 0.8,    # Reward for growing bot clusters
-                    'cluster_influence': 0.5,  # Reward when clusters successfully influence others
-                })
+                    'engage': 0.0,      # Value of engaging with content
+                    'amplify': 0.0,     # Value of amplifying content
+                }
+                # Bot-specific rewards - only what's used in _execute_bot_action
+                self.rewards = {
+                    'cluster_growth': 0.8,      # Growing bot clusters
+                    'cluster_influence': 0.5,    # Cluster successfully influencing
+                    'engagement_growth': 0.4,    # Increasing engagement
+                    'influence_success': 0.6     # Successfully influencing humans
+                }
 
             elif self.ai_subtype == 1:  # Recommendation Algorithm
                 self.recommendation_strength = 1.0
@@ -80,18 +73,18 @@ class EchoChamberAgent(Agent):
                 self.user_profiles = {}
                 self.recommendation_radius = 2
                 
-                # Add recommendation-specific Q-values
-                self.q_values.update({
-                    'personalize': 0.0,  # Value of personalizing content
-                    'explore': 0.0,      # Value of suggesting new content types
+                # Recommendation-specific Q-values - only what's used in _execute_recommendation_action
+                self.q_values = {
+                    'personalize': 0.0,  # Value of personalizing recommendations
+                    'explore': 0.0,      # Value of trying new content
                     'exploit': 0.0       # Value of using known preferences
-                })
-                # Add recommendation-specific rewards
-                self.rewards.update({
-                    'recommendation_success': 0.7,  # Reward for successful recommendations
-                    'user_engagement': 0.4,        # Reward for increased user engagement
-                    'preference_match': 0.5        # Reward for matching user preferences
-                })
+                }
+                # Recommendation-specific rewards - only what's used in _execute_recommendation_action
+                self.rewards = {
+                    'recommendation_success': 0.7,  # Successful recommendations
+                    'user_engagement': 0.4,        # Increased user engagement
+                    'preference_match': 0.5        # Matching user preferences
+                }
 
         # Network influence attributes
         self.connections = {}  # Dictionary to store connections and their strengths
@@ -105,12 +98,41 @@ class EchoChamberAgent(Agent):
             'indirect': 0.3,  # Indirect interactions (shared viewers)
         }
 
-    def step(self) -> None:
-        """Determine if agent is happy and move if necessary."""
+    def step(self):
+        """
+        Execute one step for the agent in the simulation. This method handles:
+        
+        1. Network Updates:
+           - Updates connections with neighboring agents
+        
+        2. Similarity Calculation:
+           - Content preference matching (50% weight)
+           - Bot/AI influence (30% weight)
+           - Engagement-based factors (20% weight)
+           - Network influence (10% weight applied to total)
+        
+        3. Movement and Actions:
+           For Human Agents (type 0):
+           - Move if similarity < homophily threshold
+           - Stay and increase happiness if satisfied
+           
+           For AI Agents (type 1):
+           - Execute reinforcement learning actions
+           - For social bots: form clusters and amplify influence
+           - For recommendation algorithms: analyze users and make recommendations
+        
+        4. Updates:
+           - Update engagement metrics
+           - Adjust homophily based on echo chamber strength
+        """
         neighbors = self.model.grid.get_neighbors(
             self.pos, moore=True, radius=self.model.radius
         )
 
+        # 1. Update network connections first
+        self._update_network_connections(neighbors)
+
+        # 2. Calculate base similarity
         if not neighbors:
             similarity_fraction = 0.0
         else:
@@ -154,57 +176,38 @@ class EchoChamberAgent(Agent):
                                self.shares * 0.15) / len(neighbors)
             engagement_factor = min(0.2, engagement_factor)  # Cap at 20% influence
             
-            # Combine all factors
-            similarity_fraction = (content_similarity * 0.5 +  # Content matching (50%)
-                                 bot_influence +              # Bot influence (30%)
-                                 engagement_factor)           # Engagement (20%)
+            # Calculate initial similarity
+            similarity_fraction = (content_similarity * 0.5 +  
+                                 bot_influence +              
+                                 engagement_factor)           
             
-            similarity_fraction = min(1.0, similarity_fraction)  # Cap at 1.0
-
-        if self.type == 1 and self.ai_subtype == 1:  # Recommendation Algorithm
-            # Get users in recommendation radius
-            users = [n for n in neighbors if n.type == 0]
+            # Add network influence (10% weight)
+            if self.connections:
+                network_similarity = sum(conn['strength'] for conn in self.connections.values()) / len(self.connections)
+                similarity_fraction = (similarity_fraction * 0.9 + network_similarity * 0.1)
             
-            for user in users:
-                # 1. Analyze user preferences
-                self._analyze_user_preferences(user)
-                
-                # 2. Generate and apply recommendation
-                recommended_content = self._generate_recommendations(user)
-                
-                # 3. Check if recommendation was successful
-                success = (user.preference == recommended_content and 
-                          user.engagement_rate > user.base_homophily)
-                
-                # 4. Update recommendation model
-                self._update_recommendation_model(success)
-                
-                # 5. Influence user based on recommendation strength
-                if success:
-                    user.current_homophily = min(1.0, 
-                        user.current_homophily + (0.1 * self.recommendation_strength))
+            similarity_fraction = min(1.0, similarity_fraction)
 
-        # Add network influence to similarity calculation (after existing similarity calculation)
-        if self.connections:
-            network_similarity = sum(conn['strength'] for conn in self.connections.values()) / len(self.connections)
-            # Add 10% network influence to the agent's overall similarity calculation
-            similarity_fraction = (similarity_fraction * 0.9 + network_similarity * 0.1)
+        # 3. Movement and Actions
+        if self.type == 0:  # Human Agents
+            # Humans move based on similarity
+            if similarity_fraction < self.current_homophily:
+                self.model.grid.move_to_empty(self)
+            else:
+                self.model.happy += 1
         
-        # Update engagement and homophily based on local environment
-        self._update_engagement_and_homophily(similarity_fraction)
-
-        # Move if unhappy
-        if similarity_fraction < self.current_homophily:
-            self.model.grid.move_to_empty(self)
-        else:
-            self.model.happy += 1
+        else:  # AI Agents
+            # Choose and execute action using RL
+            action = self._choose_action()
+            reward = self._execute_action(action, neighbors)
+            self._update_q_values(action, reward)
             
-            # Bots in clusters increase their amplification power
-            if self.type == 1 and self.bot_cluster_size > 1:
+            # Social bots can get power boost
+            if self.ai_subtype == 0 and self.bot_cluster_size > 1:
                 self._amplify_bot_power()
 
-        # Update network connections
-        self._update_network_connections(neighbors)
+        # 4. Update engagement and homophily
+        self._update_engagement_and_homophily(similarity_fraction)
 
     def _update_bot_cluster(self, neighbors):
         """Track the size of bot clusters and update bot metrics."""
@@ -280,53 +283,43 @@ class EchoChamberAgent(Agent):
         # Add network influence to engagement probability
         if self.connections:
             network_boost = sum(conn['strength'] for conn in self.connections.values()) / len(self.connections)
-            engage_prob *= (1 + network_boost * 0.2)  # increase engagement probability up to 20% based on connection strength
-        
-        # Different engagement impacts, represents how different types of engagement on Youtube have varying levels of influence 
+            engage_prob *= (1 + network_boost * 0.2)
+
+        # Handle engagement
+        if self.model.random.random() < engage_prob:
+            self._process_engagement()
+
+    def _process_engagement(self):
+        """Handle engagement actions and updates."""
         engagement_weights = {
             'like': 0.05, # 5% boost to homophily
             'comment': 0.10, # 10% boost to homophily
             'share': 0.15 # 15% boost to homophily
         }
         
-        if self.model.random.random() < engage_prob:
-            action_type = self.model.random.random()
-            if action_type < 0.5:
-                self.likes += 1
-                boost = engagement_weights['like']
-            elif action_type < 0.8:
-                self.comments += 1
-                boost = engagement_weights['comment']
-            else:
-                self.shares += 1
-                boost = engagement_weights['share']
-            
-            # Engagement increases homophily with weighted impact
-            if self.type == 0:  # Human users
-                self.current_homophily = min(
-                    1.0,
-                    self.base_homophily + (boost * self.echo_chamber_strength)
-                )
-            elif self.type == 1 and self.ai_subtype == 0:  # Social bots
-                # Bots in clusters have stronger homophily increases
-                cluster_multiplier = 1.0 + (self.bot_cluster_size * 0.1)  # 10% per bot in cluster
-                self.current_homophily = min(
-                    1.0,
-                    self.base_homophily + (boost * 2.0 * cluster_multiplier)
-                )
-
-        # Update engagement and homophily based on local environment
-        self._update_engagement_and_homophily(similarity_fraction)
-
-        # Move if unhappy
-        if similarity_fraction < self.current_homophily:
-            self.model.grid.move_to_empty(self)
+        action_type = self.model.random.random()
+        if action_type < 0.5:
+            self.likes += 1
+            boost = engagement_weights['like']
+        elif action_type < 0.8:
+            self.comments += 1
+            boost = engagement_weights['comment']
         else:
-            self.model.happy += 1
-            
-            # Bots in clusters increase their amplification power
-            if self.type == 1 and self.bot_cluster_size > 1:
-                self._amplify_bot_power()
+            self.shares += 1
+            boost = engagement_weights['share']
+        
+        # Update homophily based on agent type
+        if self.type == 0:  # Human
+            self.current_homophily = min(
+                1.0,
+                self.base_homophily + (boost * self.echo_chamber_strength)
+            )
+        elif self.type == 1 and self.ai_subtype == 0:  # Social bot
+            cluster_multiplier = 1.0 + (self.bot_cluster_size * 0.1)
+            self.current_homophily = min(
+                1.0,
+                self.base_homophily + (boost * 2.0 * cluster_multiplier)
+            )
 
     def _analyze_user_preferences(self, user):
         """
@@ -383,7 +376,7 @@ class EchoChamberAgent(Agent):
         
         return preferred_content[0] if preferred_content else target_user.preference
 
-    def _update_recommendation_model(self, success: bool):
+    def _update_recommendation_model(self, success):
         """
         Update recommendation algorithm based on success/failure.
         Only recommendation algorithm can update the recommendation model
@@ -488,3 +481,114 @@ class EchoChamberAgent(Agent):
         )
         
         return min(1.0, total_strength / len(shared_connections))
+
+    def _choose_action(self):
+        """Choose action based on Q-values and exploration rate."""
+        if self.model.random.random() < self.exploration_rate:
+            # Explore: choose random action
+            return self.model.random.choice(list(self.q_values.keys()))
+        else:
+            # Exploit: choose best known action
+            return max(self.q_values, key=self.q_values.get)
+
+    def _execute_action(self, action, neighbors):
+        """Execute chosen action and return reward."""
+        reward = 0.0
+        
+        if self.ai_subtype == 0:  # Social Bot
+            reward = self._execute_bot_action(action, neighbors)
+        elif self.ai_subtype == 1:  # Recommendation Algorithm
+            reward = self._execute_recommendation_action(action, neighbors)
+        
+        return reward
+
+    def _execute_bot_action(self, action, neighbors):
+        """Execute social bot actions and calculate rewards."""
+        reward = 0.0
+        
+        if action == 'cluster':
+            # Form/join bot clusters
+            similar_bots = [n for n in neighbors if n.type == 1 and n.preference == self.preference]
+            if similar_bots:
+                self._update_bot_cluster(neighbors)
+                reward += self.rewards['cluster_growth'] * (self.bot_cluster_size / len(neighbors))
+        elif action == 'coordinate':
+            # work with other bots
+            if self.bot_cluster_size > 1:
+                self._amplify_bot_power()
+                reward += self.rewards['cluster_influence'] * self.amplification_power
+                # Higher reward for more influence
+        
+        elif action == 'engage':
+            # Engage with content
+            self.likes += 1
+            reward += self.rewards['engagement_growth'] * 0.5
+        
+        elif action == 'amplify':
+            # Try to influence nearby humans
+            humans = [n for n in neighbors if n.type == 0]
+            influenced = 0
+            for human in humans:
+                if human.preference == self.preference:
+                    human.current_homophily += 0.1 * self.amplification_power
+                    influenced += 1
+            reward += self.rewards['influence_success'] * (influenced / max(1, len(humans)))
+        
+        return reward
+
+    def _execute_recommendation_action(self, action, neighbors):
+        """Execute recommendation algorithm actions and calculate rewards."""
+        reward = 0.0
+        
+        if action == 'personalize':
+            # Analyze and update user preferences
+            users = [n for n in neighbors if n.type == 0]
+            for user in users:
+                self._analyze_user_preferences(user)
+            reward += self.rewards['preference_match'] * 0.5
+        
+        elif action == 'explore':
+            # Try recommending different content
+            users = [n for n in neighbors if n.type == 0]
+            for user in users:
+                recommended_content = self._generate_recommendations(user)
+                if recommended_content != user.preference:
+                    success = (user.engagement_rate > user.base_homophily)
+                    if success:
+                        reward += self.rewards['recommendation_success']
+        
+        elif action == 'exploit':
+            # Recommend based on known preferences
+            users = [n for n in neighbors if n.type == 0]
+            successes = 0
+            for user in users:
+                recommended_content = self._generate_recommendations(user)
+                if recommended_content == user.preference:
+                    success = (user.engagement_rate > user.base_homophily)
+                    if success:
+                        successes += 1
+            reward += self.rewards['user_engagement'] * (successes / max(1, len(users)))
+        
+        return reward
+
+    def _update_q_values(self, action, reward):
+        """Update Q-values using Q-learning formula."""
+        # Q(s,a) = Q(s,a) + α[r + γ max Q(s',a') - Q(s,a)]
+        
+        # Get maximum future Q-value
+        max_future_q = max(self.q_values.values())
+        
+        # Update Q-value for the taken action
+        old_q = self.q_values[action]
+        self.q_values[action] = old_q + self.learning_rate * (
+            reward + 
+            self.discount_factor * max_future_q - 
+            old_q
+        )
+        
+        # Record action and result
+        self.action_history.append({
+            'action': action,
+            'reward': reward,
+            'q_value': self.q_values[action]
+        })
