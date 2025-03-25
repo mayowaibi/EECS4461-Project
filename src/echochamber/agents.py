@@ -38,19 +38,60 @@ class EchoChamberAgent(Agent):
         # Echo chamber strength (affects and is affected by engagement)
         self.echo_chamber_strength = 0.0
         
-        # AI-specific attributes
+        # AI-specific attributes (including Reinforcement Learning)
         if self.type == 1:  # AI Agent
             self.ai_subtype = ai_subtype
             self.amplification_power = 1.0
             self.bot_cluster_size = 0
             self.human_influence_radius = 1
+            
+            # Base Reinforcement Learning parameters
+            self.learning_rate = 0.1 # How quickly AI adapts to new information
+            self.discount_factor = 0.9 # How much future rewards matter (90%)
+            self.exploration_rate = 0.2 # 20% chance to try new actions
+            self.action_history = [] # Track what actions were taken
+            
+            # Base Q-values (action values)
+            self.q_values = {
+                'engage': 0.0,      # Value of engaging with content
+                'amplify': 0.0,     # Value of amplifying content
+                'connect': 0.0,     # Value of forming connections
+            }
+            self.rewards = {
+                'influence_success': 0.6,  # Reward for successfully influencing others
+                'engagement_growth': 0.4,  # Reward for increasing engagement
+            }
 
-            if self.ai_subtype == 1:  # Recommendation Algorithm
+            if self.ai_subtype == 0:  # Social Bot
+                # Add bot-specific Q-values
+                self.q_values.update({
+                    'cluster': 0.0,     # Value of joining/forming bot clusters
+                    'coordinate': 0.0,  # Value of coordinating with other bots
+                })
+                # Add bot-specific rewards
+                self.rewards.update({
+                    'cluster_growth': 0.8,    # Reward for growing bot clusters
+                    'cluster_influence': 0.5,  # Reward when clusters successfully influence others
+                })
+
+            elif self.ai_subtype == 1:  # Recommendation Algorithm
                 self.recommendation_strength = 1.0
                 self.success_rate = 0.0
-                self.learning_rate = 0.1
                 self.user_profiles = {}
                 self.recommendation_radius = 2
+                
+                # Add recommendation-specific Q-values
+                self.q_values.update({
+                    'personalize': 0.0,  # Value of personalizing content
+                    'explore': 0.0,      # Value of suggesting new content types
+                    'exploit': 0.0       # Value of using known preferences
+                })
+                # Add recommendation-specific rewards
+                self.rewards.update({
+                    'recommendation_success': 0.7,  # Reward for successful recommendations
+                    'user_engagement': 0.4,        # Reward for increased user engagement
+                    'preference_match': 0.5        # Reward for matching user preferences
+                })
 
         # Network influence attributes
         self.connections = {}  # Dictionary to store connections and their strengths
