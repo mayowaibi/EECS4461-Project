@@ -47,11 +47,22 @@ class EchoChamberAgent(Agent):
 
             if self.ai_subtype == 1:  # Recommendation Algorithm
                 self.recommendation_strength = 1.0
-                self.content_history = []
                 self.success_rate = 0.0
                 self.learning_rate = 0.1
                 self.user_profiles = {}
                 self.recommendation_radius = 2
+
+        # Network influence attributes
+        self.connections = {}  # Dictionary to store connections and their strengths
+        self.network_influence = 0.0  # Current influence level in network
+        self.influence_radius = 2  # How far influence spreads
+        self.connection_threshold = 0.3  # Minimum strength to maintain connection
+        
+        # Simplified network weights (removed temporal)
+        self.network_weights = {
+            'direct': 0.7,    # Direct interactions (comments, replies)
+            'indirect': 0.3,  # Indirect interactions (shared viewers)
+        }
 
     def step(self) -> None:
         """Determine if agent is happy and move if necessary."""
@@ -132,6 +143,12 @@ class EchoChamberAgent(Agent):
                     user.current_homophily = min(1.0, 
                         user.current_homophily + (0.1 * self.recommendation_strength))
 
+        # Add network influence to similarity calculation (after existing similarity calculation)
+        if self.connections:
+            network_similarity = sum(conn['strength'] for conn in self.connections.values()) / len(self.connections)
+            # Add 10% network influence to the agent's overall similarity calculation
+            similarity_fraction = (similarity_fraction * 0.9 + network_similarity * 0.1)
+        
         # Update engagement and homophily based on local environment
         self._update_engagement_and_homophily(similarity_fraction)
 
@@ -144,6 +161,9 @@ class EchoChamberAgent(Agent):
             # Bots in clusters increase their amplification power
             if self.type == 1 and self.bot_cluster_size > 1:
                 self._amplify_bot_power()
+
+        # Update network connections
+        self._update_network_connections(neighbors)
 
     def _update_bot_cluster(self, neighbors):
         """Track the size of bot clusters and update bot metrics."""
@@ -216,6 +236,11 @@ class EchoChamberAgent(Agent):
         else:
             engage_prob = 0.0
         
+        # Add network influence to engagement probability
+        if self.connections:
+            network_boost = sum(conn['strength'] for conn in self.connections.values()) / len(self.connections)
+            engage_prob *= (1 + network_boost * 0.2)  # increase engagement probability up to 20% based on connection strength
+        
         # Different engagement impacts, represents how different types of engagement on Youtube have varying levels of influence 
         engagement_weights = {
             'like': 0.05, # 5% boost to homophily
@@ -248,11 +273,6 @@ class EchoChamberAgent(Agent):
                     1.0,
                     self.base_homophily + (boost * 2.0 * cluster_multiplier)
                 )
-            elif self.type == 1 and self.ai_subtype == 1:  # Recommendation Algorithm
-                # Influence user based on recommendation strength
-                if success:
-                    user.current_homophily = min(1.0, 
-                        user.current_homophily + (0.1 * self.recommendation_strength))
 
         # Update engagement and homophily based on local environment
         self._update_engagement_and_homophily(similarity_fraction)
@@ -344,3 +364,86 @@ class EchoChamberAgent(Agent):
             # Reduce recommendation strength with unsuccessful recommendations
             self.recommendation_strength = max(0.5, 
                 self.recommendation_strength - (self.learning_rate * 0.5))
+
+    def _update_network_connections(self, neighbors):
+        """Update network connections based on interactions and similarity."""
+        for neighbor in neighbors:
+            neighbor_id = neighbor.unique_id
+            
+            # Calculate connection strength based on direct and indirect interactions
+            connection_strength = self._calculate_connection_strength(neighbor)
+            
+            # Update or create connection if strength is above threshold (0.3)
+            if connection_strength > self.connection_threshold:
+                if neighbor_id not in self.connections:
+                    # Create new connection
+                    self.connections[neighbor_id] = {
+                        'strength': connection_strength,
+                        'last_interaction': self.model.step_count,
+                        'shared_preferences': self.preference == neighbor.preference,
+                        'interaction_count': 1
+                    }
+                else:
+                    # Update existing connection (80% old strength, 20% new strength)
+                    self.connections[neighbor_id]['strength'] = (
+                        self.connections[neighbor_id]['strength'] * 0.8 + 
+                        connection_strength * 0.2
+                    )
+                    self.connections[neighbor_id]['last_interaction'] = self.model.step_count
+                    self.connections[neighbor_id]['interaction_count'] += 1
+            
+            # Remove weak connections
+            self.connections = {k: v for k, v in self.connections.items() 
+                              if v['strength'] > self.connection_threshold}
+
+    def _calculate_connection_strength(self, other_agent):
+        """Calculate the strength of connection between two agents."""
+        # Direct interaction strength (70% weight)
+        direct_strength = self._calculate_direct_strength(other_agent)
+        
+        # Indirect interaction strength (30% weight)
+        indirect_strength = self._calculate_indirect_strength(other_agent)
+        
+        # Combine factors with simplified weights
+        total_strength = (
+            direct_strength * self.network_weights['direct'] + #0.7
+            indirect_strength * self.network_weights['indirect'] #0.3
+        )
+        
+        return min(1.0, total_strength)
+
+    def _calculate_direct_strength(self, other_agent):
+        """
+        Calculate strength from direct interactions.
+        Same content preferences and Similar engagement patterns (likes, comments, shares)
+        """
+        # Content preference similarity
+        preference_match = 1.0 if self.preference == other_agent.preference else 0.3
+        
+        # how similar their engagement patterns are
+        engagement_similarity = min(1.0, (
+            abs(self.likes - other_agent.likes) * 0.3 +
+            abs(self.comments - other_agent.comments) * 0.4 +
+            abs(self.shares - other_agent.shares) * 0.3
+        ) / 10)
+        
+        return (preference_match + engagement_similarity) / 2
+
+    def _calculate_indirect_strength(self, other_agent):
+        """
+        Calculate strength from indirect connections.
+        Shared connections with other agents
+        """
+        # Get shared connections
+        shared_connections = set(self.connections.keys()) & set(other_agent.connections.keys())
+        if not shared_connections:
+            return 0.0
+        
+        # Calculate average strength of shared connections
+        total_strength = sum(
+            min(self.connections[conn_id]['strength'],
+                other_agent.connections[conn_id]['strength'])
+            for conn_id in shared_connections
+        )
+        
+        return min(1.0, total_strength / len(shared_connections))
