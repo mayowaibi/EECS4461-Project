@@ -1,31 +1,33 @@
 from mesa import Agent
 
-# type = 0 : user, 1 : social bot
+# type = 0 : user, 1 : AI agent
+# AI subtype = 0 : social bot, 1 : recommendation algorithm
 # preference = 0 : video games, 1 : sports, 2 : politics
 
 class EchoChamberAgent(Agent):
     """
     Agent class for YouTube echo chamber simulation.
-    Types: Human (0), Social Bot (1)
+    Types: Human (0), AI Agent (1)
+    AI Subtypes: Social Bot (0), Recommendation Algorithm (1)
     Preferences: Video Games (0), Sports (1), Politics (2)
     """
 
     def __init__(self, model, agent_type: int, content_preference: int, base_homophily: float, 
-                 engagement_rate: float = 0.5) -> None:
+                 engagement_rate: float = 0.5, ai_subtype: int = 0) -> None:
         """Create a new agent for YouTube simulation.
         Args:
             model: The model instance the agent belongs to
-            agent_type: Type of agent (0=human, 1=social bot)
+            agent_type: Type of agent (0=human, 1=AI agent)
             content_preference: Content preference (0=games, 1=sports, 2=politics)
             base_homophily: Base homophily level before engagement effects (0-1)
             engagement_rate: Base rate of engagement with content (0-1)
-                           Higher rates strengthen echo chambers through increased homophily
+            ai_subtype: For AI agents, specifies bot (0) or recommendation algorithm (1)
         """
         super().__init__(model)
         self.type = agent_type
         self.preference = content_preference
         self.base_homophily = base_homophily
-        self.current_homophily = base_homophily  # Will be modified by engagement
+        self.current_homophily = base_homophily
         self.engagement_rate = engagement_rate
         
         # Engagement counters
@@ -36,10 +38,20 @@ class EchoChamberAgent(Agent):
         # Echo chamber strength (affects and is affected by engagement)
         self.echo_chamber_strength = 0.0
         
-        # Bot-specific metrics
-        self.bot_cluster_size = 0  # Size of bot cluster this bot belongs to
-        self.amplification_power = 1.0  # How much this bot amplifies content
-        self.human_influence_radius = 1  # How far this bot can influence humans
+        # AI-specific attributes
+        if self.type == 1:  # AI Agent
+            self.ai_subtype = ai_subtype
+            self.amplification_power = 1.0
+            self.bot_cluster_size = 0
+            self.human_influence_radius = 1
+
+            if self.ai_subtype == 1:  # Recommendation Algorithm
+                self.recommendation_strength = 1.0
+                self.content_history = []
+                self.success_rate = 0.0
+                self.learning_rate = 0.1
+                self.user_profiles = {}
+                self.recommendation_radius = 2
 
     def step(self) -> None:
         """Determine if agent is happy and move if necessary."""
@@ -60,7 +72,7 @@ class EchoChamberAgent(Agent):
                                 if n.type == 1 and n.preference == self.preference])
             
             # Special case: Bot-to-Bot interactions
-            if self.type == 1:  # If this agent is a bot
+            if self.type == 1 and self.ai_subtype == 0:  # If this agent is a bot
                 # Track bot cluster size
                 if bot_neighbors > 0:
                     self._update_bot_cluster(neighbors)
@@ -96,6 +108,29 @@ class EchoChamberAgent(Agent):
                                  engagement_factor)           # Engagement (20%)
             
             similarity_fraction = min(1.0, similarity_fraction)  # Cap at 1.0
+
+        if self.type == 1 and self.ai_subtype == 1:  # Recommendation Algorithm
+            # Get users in recommendation radius
+            users = [n for n in neighbors if n.type == 0]
+            
+            for user in users:
+                # 1. Analyze user preferences
+                self._analyze_user_preferences(user)
+                
+                # 2. Generate and apply recommendation
+                recommended_content = self._generate_recommendations(user)
+                
+                # 3. Check if recommendation was successful
+                success = (user.preference == recommended_content and 
+                          user.engagement_rate > user.base_homophily)
+                
+                # 4. Update recommendation model
+                self._update_recommendation_model(success)
+                
+                # 5. Influence user based on recommendation strength
+                if success:
+                    user.current_homophily = min(1.0, 
+                        user.current_homophily + (0.1 * self.recommendation_strength))
 
         # Update engagement and homophily based on local environment
         self._update_engagement_and_homophily(similarity_fraction)
@@ -170,11 +205,16 @@ class EchoChamberAgent(Agent):
         if self.type == 0:  # Human user
             # Users engage more in stronger echo chambers
             engage_prob = self.engagement_rate * (1 + self.echo_chamber_strength)
-        else:  # Social bot
+        elif self.type == 1 and self.ai_subtype == 0:  # Social bot
             # Bots maintain higher, more consistent engagement
             # Bots in clusters engage even more
             cluster_factor = 1.0 + (self.bot_cluster_size * 0.1)  # 10% boost per bot in cluster
             engage_prob = self.engagement_rate * 1.5 * cluster_factor
+        elif self.type == 1 and self.ai_subtype == 1:  # Recommendation Algorithm
+            # Recommendations become more effective with higher success rates
+            engage_prob = self.engagement_rate * (1.0 + self.success_rate)
+        else:
+            engage_prob = 0.0
         
         # Different engagement impacts, represents how different types of engagement on Youtube have varying levels of influence 
         engagement_weights = {
@@ -201,10 +241,106 @@ class EchoChamberAgent(Agent):
                     1.0,
                     self.base_homophily + (boost * self.echo_chamber_strength)
                 )
-            else:  # Social bots
+            elif self.type == 1 and self.ai_subtype == 0:  # Social bots
                 # Bots in clusters have stronger homophily increases
                 cluster_multiplier = 1.0 + (self.bot_cluster_size * 0.1)  # 10% per bot in cluster
                 self.current_homophily = min(
                     1.0,
                     self.base_homophily + (boost * 2.0 * cluster_multiplier)
                 )
+            elif self.type == 1 and self.ai_subtype == 1:  # Recommendation Algorithm
+                # Influence user based on recommendation strength
+                if success:
+                    user.current_homophily = min(1.0, 
+                        user.current_homophily + (0.1 * self.recommendation_strength))
+
+        # Update engagement and homophily based on local environment
+        self._update_engagement_and_homophily(similarity_fraction)
+
+        # Move if unhappy
+        if similarity_fraction < self.current_homophily:
+            self.model.grid.move_to_empty(self)
+        else:
+            self.model.happy += 1
+            
+            # Bots in clusters increase their amplification power
+            if self.type == 1 and self.bot_cluster_size > 1:
+                self._amplify_bot_power()
+
+    def _analyze_user_preferences(self, user):
+        """
+        Analyze and update user preference profiles.
+        Only recommendation algorithm can analyze user preferences
+        """ 
+        if self.type != 1 or self.ai_subtype != 1:
+            return
+        
+        user_id = user.unique_id
+        # Create profile dictionary if it doesn't exist
+        if user_id not in self.user_profiles:
+            self.user_profiles[user_id] = {
+                'preference': user.preference,
+                'engagement_history': [],
+                'content_views': {0: 0, 1: 0, 2: 0}
+            }
+        
+        # Update profile based on user's recent activity
+        profile = self.user_profiles[user_id]
+        profile['content_views'][user.preference] += 1
+        profile['engagement_history'].append({
+            'likes': user.likes,
+            'comments': user.comments,
+            'shares': user.shares
+        })
+
+    def _generate_recommendations(self, target_user):
+        """
+        Generate personalized content recommendations based on user's profile.
+        Only recommendation algorithm can generate recommendations
+        """
+        if self.type != 1 or self.ai_subtype != 1:
+            return None
+        
+        # Get user profile to see viewing and engagement history
+        profile = self.user_profiles.get(target_user.unique_id)
+        if not profile:
+            return target_user.preference  # Default to user's current preference if no history exists
+        
+        # Find the most viewed content category
+        max_views = max(profile['content_views'].values())
+        preferred_content = [k for k, v in profile['content_views'].items() 
+                            if v == max_views]
+        
+        # Consider engagement levels in recommendation 
+        if profile['engagement_history']:
+            recent_engagement = profile['engagement_history'][-1]
+            engagement_score = (recent_engagement['likes'] + 
+                              recent_engagement['comments'] * 2 + 
+                              recent_engagement['shares'] * 3)
+        else:
+            engagement_score = 0
+        
+        return preferred_content[0] if preferred_content else target_user.preference
+
+    def _update_recommendation_model(self, success: bool):
+        """
+        Update recommendation algorithm based on success/failure.
+        Only recommendation algorithm can update the recommendation model
+        """
+        if self.type != 1 or self.ai_subtype != 1:
+            return
+        
+        # Update success rate and recommendation strength based on success/failure
+        if success:
+            # Update success rate with exponential moving average (EMA)
+            # 90% weight to the old success rate, 10% weight to the new success rate
+            self.success_rate = (self.success_rate * 0.9) + (0.1 * 1.0)
+            # Increase recommendation strength with successful recommendations
+            self.recommendation_strength = min(3.0, 
+                self.recommendation_strength + (self.learning_rate * self.success_rate))
+        else:
+            # Decrease success rate with unsuccessful recommendations
+            self.success_rate = self.success_rate * 0.9
+            # Reduce recommendation strength with unsuccessful recommendations
+            self.recommendation_strength = max(0.5, 
+                self.recommendation_strength - (self.learning_rate * 0.5))
