@@ -98,6 +98,16 @@ class EchoChamberAgent(Agent):
             'indirect': 0.3,  # Indirect interactions (shared viewers)
         }
 
+        # Add interaction tracking attributes
+        self.interaction_history = {
+            'bot_bot': 0,          # Count of bot-to-bot interactions
+            'bot_human': 0,        # Count of bot-to-human interactions
+            'recommendation_influence': 0,  # Times recommendations were accepted
+            'interaction_success': 0,       # Successful influence attempts
+            'last_interaction_type': None,  # Track type of last interaction
+            'influenced_agents': set()      # Set of agents successfully influenced
+        }
+
     def step(self):
         """
         Execute one step for the agent in the simulation. This method handles:
@@ -444,6 +454,11 @@ class EchoChamberAgent(Agent):
             indirect_strength * self.network_weights['indirect'] #0.3
         )
         
+        # Impact of recommendation success on connection strength
+        if self.type == 1 and self.ai_subtype == 1 and other_agent.type == 0:
+            recommendation_success = 1.0 if self.success_rate > 0.5 else 0.0
+            total_strength += recommendation_success * 0.2
+        
         return min(1.0, total_strength)
 
     def _calculate_direct_strength(self, other_agent):
@@ -503,72 +518,109 @@ class EchoChamberAgent(Agent):
         return reward
 
     def _execute_bot_action(self, action, neighbors):
-        """Execute social bot actions and calculate rewards."""
-        reward = 0.0
+        """
+        Execute actions for social bots (ai_subtype = 0).
+        
+        Available actions:
+        1. 'cluster': Form or join clusters with similar bots
+           - Success: Increases bot cluster size
+           - Reward: cluster_growth (0.8)
+        
+        2. 'coordinate': Work with other bots to increase influence
+           - Success: Coordinated actions with other bots
+           - Reward: coordination_success (0.5)
+        
+        3. 'engage': Attempt to engage with human users
+           - Success: Human's engagement > their homophily
+           - Reward: successful_influence (0.6)
+        
+        4. 'amplify': Boost content visibility through engagement
+           - Success: Increased engagement metrics
+           - Reward: engagement_growth (0.4)
+        """
+        reward = 0
         
         if action == 'cluster':
             # Form/join bot clusters
             similar_bots = [n for n in neighbors if n.type == 1 and n.preference == self.preference]
-            if similar_bots:
-                self._update_bot_cluster(neighbors)
-                reward += self.rewards['cluster_growth'] * (self.bot_cluster_size / len(neighbors))
+            for bot in similar_bots:
+                success = self._update_bot_cluster(neighbors)
+                self._track_interaction(bot, 'bot_bot', success)
+                if success:
+                    reward += self.rewards['cluster_growth']
+                    
         elif action == 'coordinate':
-            # work with other bots
-            if self.bot_cluster_size > 1:
-                self._amplify_bot_power()
-                reward += self.rewards['cluster_influence'] * self.amplification_power
-                # Higher reward for more influence
-        
+            similar_bots = [n for n in neighbors if n.type == 1]
+            if similar_bots:
+                for bot in similar_bots:
+                    self._track_interaction(bot, 'bot_bot', True)
+                    reward += self.rewards['coordination_success']
+                    
         elif action == 'engage':
-            # Engage with content
-            self.likes += 1
-            reward += self.rewards['engagement_growth'] * 0.5
-        
+            human_neighbors = [n for n in neighbors if n.type == 0]
+            for human in human_neighbors:
+                success = (human.engagement_rate > human.base_homophily)
+                self._track_interaction(human, 'bot_human', success)
+                if success:
+                    reward += self.rewards['successful_influence']
+                    
         elif action == 'amplify':
-            # Try to influence nearby humans
-            humans = [n for n in neighbors if n.type == 0]
-            influenced = 0
-            for human in humans:
-                if human.preference == self.preference:
-                    human.current_homophily += 0.1 * self.amplification_power
-                    influenced += 1
-            reward += self.rewards['influence_success'] * (influenced / max(1, len(humans)))
-        
+            # Increase engagement metrics
+            self.likes += 1
+            self.comments += 1
+            self.shares += 1
+            reward += self.rewards['engagement_growth']
+                    
         return reward
 
     def _execute_recommendation_action(self, action, neighbors):
-        """Execute recommendation algorithm actions and calculate rewards."""
-        reward = 0.0
+        """
+        Execute actions for recommendation algorithms (ai_subtype = 1).
+        
+        Available actions:
+        1. 'personalize': Analyze user preferences and update recommendations
+           - Success: Better understanding of user preferences
+           - Reward: preference_match (0.5)
+        
+        2. 'explore': Recommend different content to test user interests
+           - Success: User engages with new content
+           - Reward: user_engagement (0.4)
+        
+        3. 'exploit': Recommend content matching known preferences
+           - Success: User accepts recommendation
+           - Reward: recommendation_success (0.7)
+        """
+        reward = 0
         
         if action == 'personalize':
             # Analyze and update user preferences
             users = [n for n in neighbors if n.type == 0]
             for user in users:
                 self._analyze_user_preferences(user)
-            reward += self.rewards['preference_match'] * 0.5
-        
+                success = (user.engagement_rate > user.base_homophily)
+                self._track_interaction(user, 'recommendation', success)
+                if success:
+                    reward += self.rewards['preference_match']
+                    
         elif action == 'explore':
-            # Try recommending different content
             users = [n for n in neighbors if n.type == 0]
             for user in users:
                 recommended_content = self._generate_recommendations(user)
                 if recommended_content != user.preference:
                     success = (user.engagement_rate > user.base_homophily)
+                    self._track_interaction(user, 'recommendation', success)
                     if success:
-                        reward += self.rewards['recommendation_success']
-        
+                        reward += self.rewards['user_engagement']
+                    
         elif action == 'exploit':
-            # Recommend based on known preferences
             users = [n for n in neighbors if n.type == 0]
-            successes = 0
             for user in users:
                 recommended_content = self._generate_recommendations(user)
-                if recommended_content == user.preference:
-                    success = (user.engagement_rate > user.base_homophily)
-                    if success:
-                        successes += 1
-            reward += self.rewards['user_engagement'] * (successes / max(1, len(users)))
-        
+                success = (recommended_content == user.preference)
+                self._track_interaction(user, 'recommendation', success)
+                if success:
+                    reward += self.rewards['recommendation_success']
+                    
         return reward
 
     def _update_q_values(self, action, reward):
@@ -592,3 +644,51 @@ class EchoChamberAgent(Agent):
             'reward': reward,
             'q_value': self.q_values[action]
         })
+
+    def _track_interaction(self, other_agent, interaction_type, success=False):
+        """
+        Track interactions between agents.
+        
+        Args:
+            other_agent: The agent being interacted with
+            interaction_type: Type of interaction ('bot_bot', 'bot_human', 'recommendation')
+            success: Whether the interaction was successful
+        """
+        if interaction_type == 'bot_bot' and self.type == 1 and other_agent.type == 1:
+            self.interaction_history['bot_bot'] += 1
+            if success:
+                self.interaction_history['interaction_success'] += 1
+                self.interaction_history['influenced_agents'].add(other_agent.unique_id)
+                
+        elif interaction_type == 'bot_human' and self.type == 1 and other_agent.type == 0:
+            self.interaction_history['bot_human'] += 1
+            if success:
+                self.interaction_history['interaction_success'] += 1
+                self.interaction_history['influenced_agents'].add(other_agent.unique_id)
+                
+        elif interaction_type == 'recommendation' and self.type == 1 and self.ai_subtype == 1:
+            if success:
+                self.interaction_history['recommendation_influence'] += 1
+                self.interaction_history['influenced_agents'].add(other_agent.unique_id)
+        
+        self.interaction_history['last_interaction_type'] = interaction_type
+
+    def get_interaction_stats(self):
+        """
+        Return summary statistics of agent's interactions.
+        """
+        total_interactions = (self.interaction_history['bot_bot'] + 
+                            self.interaction_history['bot_human'] + 
+                            self.interaction_history['recommendation_influence'])
+        
+        success_rate = (self.interaction_history['interaction_success'] / 
+                       total_interactions if total_interactions > 0 else 0)
+        
+        return {
+            'total_interactions': total_interactions,
+            'success_rate': success_rate,
+            'unique_influences': len(self.interaction_history['influenced_agents']),
+            'bot_bot_interactions': self.interaction_history['bot_bot'],
+            'bot_human_interactions': self.interaction_history['bot_human'],
+            'recommendation_successes': self.interaction_history['recommendation_influence']
+        }
