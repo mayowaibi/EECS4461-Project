@@ -51,6 +51,9 @@ class EchoChamberAgent(Agent):
                 self.learning_rate = 0.1
                 self.user_profiles = {}
                 self.recommendation_radius = 2
+                
+                self.bot_influenced_content = {}  # Track content promoted by bot clusters
+                self.bot_influence_weight = 0.3   # Weight given to bot-influenced content
 
         # Network influence attributes
         self.connections = {}  # Dictionary to store connections and their strengths
@@ -274,19 +277,6 @@ class EchoChamberAgent(Agent):
                     self.base_homophily + (boost * 2.0 * cluster_multiplier)
                 )
 
-        # Update engagement and homophily based on local environment
-        self._update_engagement_and_homophily(similarity_fraction)
-
-        # Move if unhappy
-        if similarity_fraction < self.current_homophily:
-            self.model.grid.move_to_empty(self)
-        else:
-            self.model.happy += 1
-            
-            # Bots in clusters increase their amplification power
-            if self.type == 1 and self.bot_cluster_size > 1:
-                self._amplify_bot_power()
-
     def _analyze_user_preferences(self, user):
         """
         Analyze and update user preference profiles.
@@ -313,6 +303,26 @@ class EchoChamberAgent(Agent):
             'shares': user.shares
         })
 
+        # Add bot influence analysis
+        neighbors = self.model.grid.get_neighbors(user.pos, moore=True, radius=self.model.radius)
+        bot_clusters = {}
+        
+        # Analyze bot clusters in the area
+        for neighbor in neighbors:
+            if neighbor.type == 1 and neighbor.ai_subtype == 0:  # If social bot
+                pref = neighbor.preference
+                if pref not in bot_clusters:
+                    bot_clusters[pref] = {'size': 0, 'power': 0}
+                bot_clusters[pref]['size'] += 1
+                bot_clusters[pref]['power'] += neighbor.amplification_power
+        
+        # Update bot influence tracking
+        for pref, cluster in bot_clusters.items():
+            if pref not in self.bot_influenced_content:
+                self.bot_influenced_content[pref] = 0
+            # More weight to larger, more powerful clusters
+            self.bot_influenced_content[pref] += (cluster['size'] * cluster['power'])
+
     def _generate_recommendations(self, target_user):
         """
         Generate personalized content recommendations based on user's profile.
@@ -326,21 +336,23 @@ class EchoChamberAgent(Agent):
         if not profile:
             return target_user.preference  # Default to user's current preference if no history exists
         
-        # Find the most viewed content category
-        max_views = max(profile['content_views'].values())
-        preferred_content = [k for k, v in profile['content_views'].items() 
-                            if v == max_views]
+        # Calculate content scores combining user preference and bot influence
+        content_scores = {}
+        for content_type in [0, 1, 2]:  # All content types
+            # User preference score (70%)
+            user_score = profile['content_views'].get(content_type, 0)
+            
+            # Bot influence score (30%)
+            bot_score = self.bot_influenced_content.get(content_type, 0)
+            
+            # Combine scores with weights
+            content_scores[content_type] = (
+                (user_score * (1 - self.bot_influence_weight)) +
+                (bot_score * self.bot_influence_weight)
+            )
         
-        # Consider engagement levels in recommendation 
-        if profile['engagement_history']:
-            recent_engagement = profile['engagement_history'][-1]
-            engagement_score = (recent_engagement['likes'] + 
-                              recent_engagement['comments'] * 2 + 
-                              recent_engagement['shares'] * 3)
-        else:
-            engagement_score = 0
-        
-        return preferred_content[0] if preferred_content else target_user.preference
+        # Return content type with highest combined score
+        return max(content_scores.items(), key=lambda x: x[1])[0]
 
     def _update_recommendation_model(self, success: bool):
         """
@@ -358,12 +370,32 @@ class EchoChamberAgent(Agent):
             # Increase recommendation strength with successful recommendations
             self.recommendation_strength = min(3.0, 
                 self.recommendation_strength + (self.learning_rate * self.success_rate))
+            
+            # Strengthen bot influence weight on successful recommendations
+            self.bot_influence_weight = min(0.5, self.bot_influence_weight + 0.01)
+            
+            # Amplify nearby bot clusters that share the recommended content
+            neighbors = self.model.grid.get_neighbors(
+                self.pos, moore=True, radius=self.recommendation_radius
+            )
+            for neighbor in neighbors:
+                if (neighbor.type == 1 and 
+                    neighbor.ai_subtype == 0 and  # Is social bot
+                    neighbor.preference == self.preference):  # Shares content type
+                    # Boost bot's amplification power
+                    neighbor.amplification_power = min(
+                        3.0,
+                        neighbor.amplification_power * 1.1  # 10% boost
+                    )
         else:
             # Decrease success rate with unsuccessful recommendations
             self.success_rate = self.success_rate * 0.9
             # Reduce recommendation strength with unsuccessful recommendations
             self.recommendation_strength = max(0.5, 
                 self.recommendation_strength - (self.learning_rate * 0.5))
+            
+            # Reduce bot influence weight on failed recommendations
+            self.bot_influence_weight = max(0.1, self.bot_influence_weight - 0.01)
 
     def _update_network_connections(self, neighbors):
         """Update network connections based on interactions and similarity."""
