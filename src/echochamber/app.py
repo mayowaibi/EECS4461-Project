@@ -5,30 +5,34 @@ from mesa.visualization import (
     make_plot_component,
     make_space_component,
 )
-from model import EchoChamber  
-from agents import EchoChamberAgent  
+from model import EchoChamber
+from agents import EchoChamberAgent
 
-# Function to create a new model instance when needed
+# Create model instance 
 def create_model():
     return EchoChamber(
-        width=20, height=20, density=0.8, 
-        human_homophily=0.4, ai_homophily=0.4, 
-        human_engagement=0.5, ai_engagement=0.5, ai_ratio=0.5
+        width=20,
+        height=20,
+        density=0.8,
+        human_homophily=0.4,
+        ai_homophily=0.4,
+        human_engagement=0.5,
+        ai_engagement=0.5,
+        ai_ratio=0.5
     )
 
-# Agent Portrayal Function 
+# Agent portrayal function for grid visualization
 def agent_portrayal(agent: EchoChamberAgent):
-    """Defines how agents are displayed in the visualization based on content preference."""
     content_colors = {0: "tab:orange", 1: "tab:blue", 2: "tab:red"}  
     portrayal = {
-        "color": content_colors.get(agent.preference, "gray"),  
-        "marker": "o" if agent.type == 0 else ("^" if agent.bot_cluster_size > 1 else "s"),  
-        "size": 10 + (agent.engagement_rate * 5),  
-        "alpha": min(1.0, 0.5 + agent.amplification_power * 0.2),  # Bots with more influence are more visible
+        "color": content_colors.get(agent.preference, "gray"),
+        "marker": "o" if agent.type == 0 else ("s" if agent.type == 1 else "^"),  # 0: Human, 1: Bot, 2: Algorithm
+        "size": 10 + (agent.engagement_rate * 5),
+        "alpha": min(1.0, 0.5 + (getattr(agent, 'amplification_power', 0.0) * 0.4)),  # Handle both human and AI agents
     }
     return portrayal
 
-# Define UI Control Sliders 
+# UI controls
 model_params = {
     "seed": {"type": "InputText", "value": 42, "label": "Random Seed"},
     "density": Slider("Agent Density", 0.8, 0.1, 1.0, 0.1),
@@ -41,21 +45,31 @@ model_params = {
     "height": 20,
 }
 
-# Visualization Components
-HappyPlot = make_plot_component({"Happy Agents": "tab:green"})  
-AIClusterPlot = make_plot_component({"AI Cluster Percentage": "tab:purple"})  
+# Visualization outputs
+HappyPlot = make_plot_component({"Happy Agents %": "tab:green", "AI Cluster %": "tab:purple"})      
+EchoStrengthPlot = make_plot_component({"Echo Chamber Strength": "tab:red", "Reinforcement Learning Reward": "tab:orange", "Network Influence": "tab:blue"})
 
-# Create Solara Visualization
+# New engagement metric plots
+EngagementMetricsPlot = make_plot_component({
+    "Total Likes": "tab:cyan",
+    "Total Comments": "tab:blue",
+    "Total Shares": "tab:purple"
+})
+
+
+model1 = EchoChamber()
+
+# Interface layout
 page = SolaraViz(
-    create_model(),  # Use function instead of direct initialization
+    model1,
     components=[
-        make_space_component(agent_portrayal),  
+        make_space_component(agent_portrayal),
         HappyPlot,
-        AIClusterPlot,  
+        EchoStrengthPlot,
+        EngagementMetricsPlot,
     ],
     model_params=model_params,
 )
 
 if __name__ == "__main__":
     page
-  

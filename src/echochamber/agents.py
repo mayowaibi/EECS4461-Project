@@ -64,7 +64,9 @@ class EchoChamberAgent(Agent):
                     'cluster_growth': 0.8,      # Growing bot clusters
                     'cluster_influence': 0.5,    # Cluster successfully influencing
                     'engagement_growth': 0.4,    # Increasing engagement
-                    'influence_success': 0.6     # Successfully influencing humans
+                    'influence_success': 0.6,    # Successfully influencing humans
+                    'coordination_success': 0.7, # Successful coordination with other bots
+                    'successful_influence': 0.6  # Successfully influencing humans
                 }
 
             elif self.ai_subtype == 1:  # Recommendation Algorithm
@@ -518,37 +520,15 @@ class EchoChamberAgent(Agent):
         return reward
 
     def _execute_bot_action(self, action, neighbors):
-        """
-        Execute actions for social bots (ai_subtype = 0).
-        
-        Available actions:
-        1. 'cluster': Form or join clusters with similar bots
-           - Success: Increases bot cluster size
-           - Reward: cluster_growth (0.8)
-        
-        2. 'coordinate': Work with other bots to increase influence
-           - Success: Coordinated actions with other bots
-           - Reward: coordination_success (0.5)
-        
-        3. 'engage': Attempt to engage with human users
-           - Success: Human's engagement > their homophily
-           - Reward: successful_influence (0.6)
-        
-        4. 'amplify': Boost content visibility through engagement
-           - Success: Increased engagement metrics
-           - Reward: engagement_growth (0.4)
-        """
-        reward = 0
+        """Execute a bot action and return the reward."""
+        reward = 0.0
         
         if action == 'cluster':
-            # Form/join bot clusters
             similar_bots = [n for n in neighbors if n.type == 1 and n.preference == self.preference]
-            for bot in similar_bots:
-                success = self._update_bot_cluster(neighbors)
-                self._track_interaction(bot, 'bot_bot', success)
-                if success:
-                    reward += self.rewards['cluster_growth']
-                    
+            if similar_bots:
+                self._update_bot_cluster(neighbors)
+                reward += self.rewards['cluster_growth']
+                
         elif action == 'coordinate':
             similar_bots = [n for n in neighbors if n.type == 1]
             if similar_bots:
@@ -565,12 +545,10 @@ class EchoChamberAgent(Agent):
                     reward += self.rewards['successful_influence']
                     
         elif action == 'amplify':
-            # Increase engagement metrics
-            self.likes += 1
-            self.comments += 1
-            self.shares += 1
+            # Amplify content through engagement
+            self.amplification_power = min(1.5, self.amplification_power + 0.1)
             reward += self.rewards['engagement_growth']
-                    
+            
         return reward
 
     def _execute_recommendation_action(self, action, neighbors):
