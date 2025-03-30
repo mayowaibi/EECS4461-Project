@@ -19,7 +19,6 @@ class EchoChamber(Model):
         ai_ratio=0.5,
         recsys_ratio=0.3,
         radius=1,
-        max_steps=100,
         seed=None,
     ):
         """
@@ -51,9 +50,13 @@ class EchoChamber(Model):
         self.recsys_ratio = recsys_ratio
         self.radius = radius
         
+        # Plateau stopping parameters
+        self.prev_happy_ratio = None
+        self.happy_plateau_counter = 0
+        self.plateau_tolerance = 0.02  # 2% change allowed
+        self.plateau_required_steps = 5  # Number of stable steps before stopping
 
         # Step counter
-        self.max_steps = max_steps
         self.step_count = 0
 
         # Initialize grid
@@ -97,7 +100,7 @@ class EchoChamber(Model):
             model_reporters={
                 # Happy agents and cluster tracking
                 "Happy Agents %": lambda m: (m.happy / len(m.agent_list)) * 100 if m.agent_list else 0,
-                "AI Cluster %": lambda m: sum(
+                "Social Bot Cluster %": lambda m: sum(
                     1 for a in m.agent_list 
                     if a.type == 1 and a.ai_subtype == 0 and a.bot_cluster_size > 1
                 ) / len(m.agent_list) * 100 if m.agent_list else 0,
@@ -109,14 +112,26 @@ class EchoChamber(Model):
                 # Recommendation metrics
                 "Recommendation Success Rate": self._get_recommendation_success_rate,
                 "Average Recommendation Strength": self._get_avg_recommendation_strength,
+                "Recommendation Influence Reach": self._get_recsys_influence_reach,
                 
                 # Echo chamber metrics (now separate)
-                "Echo Chamber Strength": self._get_echo_chamber_strength,
+                "Echo Chamber Strength": self._get_echo_chamber_strength_pct,
                 
                 # Engagement metrics
                 "Total Likes": lambda m: sum(a.likes for a in m.agent_list),
                 "Total Comments": lambda m: sum(a.comments for a in m.agent_list),
                 "Total Shares": lambda m: sum(a.shares for a in m.agent_list),
+
+                "Total Bot Influence": lambda m: sum(
+                    a.amplification_power + len(a.connections) * 0.5 + sum(c['strength'] for c in a.connections.values())
+                    for a in m.agent_list if a.type == 1 and a.ai_subtype == 0
+                ),
+
+                "Total RecSys Influence": lambda m: sum(
+                    a.recommendation_strength * 1.5 + a.success_rate * 2 + len(a.user_profiles) * 0.5
+                    for a in m.agent_list if a.type == 1 and a.ai_subtype == 1
+                ),
+
             },
             agent_reporters={
                 "Type": lambda a: "Human" if a.type == 0 else ("Bot" if a.ai_subtype == 0 else "RecSys"),
@@ -126,7 +141,7 @@ class EchoChamber(Model):
                 "Echo Chamber Strength": "echo_chamber_strength",
                 "Connection Count": lambda a: len(a.connections),
                 "Bot Cluster Size": lambda a: a.bot_cluster_size if (a.type == 1 and a.ai_subtype == 0) else 0,
-                "Is Happy": lambda a: a.current_homophily <= a.echo_chamber_strength,
+                "Is Happy": lambda a: a.current_homophily <= a.echo_chamber_strength
             }
         )
 
@@ -165,30 +180,46 @@ class EchoChamber(Model):
         recsys_agents = [a for a in self.agent_list if a.type == 1 and a.ai_subtype == 1]
         return sum(a.recommendation_strength for a in recsys_agents) / len(recsys_agents) if recsys_agents else 0
 
-    def _get_echo_chamber_strength(self):
+    def _get_echo_chamber_strength_pct(self):
         """Calculate average echo chamber strength"""
-        return sum(a.echo_chamber_strength for a in self.agent_list) / len(self.agent_list) if self.agent_list else 0
+        return (sum(a.echo_chamber_strength for a in self.agent_list) / len(self.agent_list)) * 100 if self.agent_list else 0
 
-    def _get_content_homogeneity(self):
-        """Calculate content preference homogeneity"""
-        preferences = [0, 1, 2]
-        counts = [sum(1 for a in self.agent_list if a.preference == p) for p in preferences]
-        max_count = max(counts)
-        return max_count / len(self.agent_list) if self.agent_list else 0
+    def _get_recsys_influence_reach(self):
+        """Calculate the percentage of unique human users influenced by recommendation algorithms"""
+        recsys_agents = [a for a in self.agent_list if a.type == 1 and a.ai_subtype == 1]
+        human_agents = [a for a in self.agent_list if a.type == 0]
+        
+        influenced_users = set()
+        for rec in recsys_agents:
+            influenced_users.update(rec.user_profiles.keys())
+        
+        # Get only human agents that have been influenced
+        influenced_humans = [agent_id for agent_id in influenced_users 
+                            if any(a.unique_id == agent_id and a.type == 0 for a in self.agent_list)]
+        
+        # Calculate percentage of influenced humans
+        return len(influenced_humans) / len(human_agents) if len(human_agents) > 0 else 0
+    
+
 
     def step(self):
         """Run one step of the model."""
-        self.happy = 0  # Reset counter of happy agents
-        
-        # Random agent activation
-        agents_to_activate = self.agent_list.copy()
-        random.shuffle(agents_to_activate)
-
-        for agent in agents_to_activate:  
-            agent.step()
-
-        self.datacollector.collect(self)  # Collect data
+        self.happy = 0
+        self.agents.shuffle_do("step")
+        self.datacollector.collect(self)
         self.step_count += 1
 
-        # Run model until all agents are happy or max_steps reached
-        self.running = self.happy < len(self.agent_list) and self.step_count < self.max_steps
+        # Calculate current happy ratio
+        happy_ratio = self.happy / len(self.agent_list) if self.agent_list else 0
+
+        # Check for stability (plateau)
+        if self.prev_happy_ratio is not None:
+            change = abs(happy_ratio - self.prev_happy_ratio)
+            if change < self.plateau_tolerance:
+                self.happy_plateau_counter += 1
+            else:
+                self.happy_plateau_counter = 0  # Reset if there's new movement
+        self.prev_happy_ratio = happy_ratio
+
+        # Stop condition: sustained happiness plateau
+        self.running = self.happy_plateau_counter < self.plateau_required_steps

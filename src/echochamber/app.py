@@ -1,4 +1,6 @@
 import solara
+import matplotlib.pyplot as plt
+import pandas as pd
 from mesa.visualization import (
     Slider,
     SolaraViz,
@@ -52,22 +54,60 @@ model_params = {
 }
 
 # Visualization components
+def DisplayModelInfo(model):
+    # Count agent types
+    human_count = sum(1 for a in model.agent_list if a.type == 0)
+    bot_count = sum(1 for a in model.agent_list if a.type == 1 and a.ai_subtype == 0)
+    recsys_count = sum(1 for a in model.agent_list if a.type == 1 and a.ai_subtype == 1)
+
+    markdown_text = f"""
+    ## 🧠 **Model Legend**
+
+    <table style="width:100%; border-collapse:collapse;">
+        <thead>
+            <tr>
+                <th style="font-size: 18px; text-align:left; padding: 6px; border-bottom: 2px solid #ccc;">👥 Agent Type (Shape)</th>
+                <th style="font-size: 18px; text-align:left; padding: 6px; border-bottom: 2px solid #ccc;">🎬 Content Preference (Color)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td style="font-size: 15px; padding: 6px; text-align:left"><strong>Human Agent</strong> <span style="font-family:monospace;">(●)</span></td>
+                <td style="font-size: 15px; padding: 6px; text-align:left"><strong>Video Games</strong> <span style="color:orange; font-weight:bold;">(Orange)</span></td>
+            </tr>
+            <tr>
+                <td style="font-size: 15px; padding: 6px; text-align:left"><strong>Social Bot</strong> <span style="font-family:monospace;">(■)</span></td>
+                <td style="font-size: 15px; padding: 6px; text-align:left"><strong>Sports</strong> <span style="color:blue; font-weight:bold;">(Blue)</span></td>
+            </tr>
+            <tr>
+                <td style="font-size: 15px; padding: 6px; text-align:left"><strong>Recommendation Algorithm</strong> <span style="font-family:monospace;">(▲)</span></td>
+                <td style="font-size: 15px; padding: 6px; text-align:left"><strong>Politics</strong> <span style="color:red; font-weight:bold;">(Red)</span></td>
+            </tr>
+        </tbody>
+    </table>
+
+    ### 📊 **Agent Counts**
+    
+    <span style="font-size: 15px;">👥 <strong>Total Human User Agents:</strong> {human_count}</span><br>
+    <span style="font-size: 15px;">🤖 <strong>Total Social Bot Agents:</strong> {bot_count}</span><br>
+    <span style="font-size: 15px;">📡 <strong>Total Recommendation Algorithm Agents:</strong> {recsys_count}</span><br>
+    """
+    return solara.Markdown(markdown_text)
+
 NetworkPlot = make_plot_component({
     "Average Connection Strength": "tab:purple",
     "Network Density": "tab:red"
 })
 
 RecommendationPlot = make_plot_component({
-    "Recommendation Success Rate": "tab:green",
-    "Average Recommendation Strength": "tab:blue"
+    "Recommendation Influence Reach": "tab:orange",
+    "Average Recommendation Strength": "tab:blue",
+    "Recommendation Success Rate": "tab:green"
 })
 
 EchoChamberPlot = make_plot_component({
     "Happy Agents %": "tab:green",
-    "AI Cluster %": "tab:purple"
-})
-
-EchoChamberStrengthPlot = make_plot_component({
+    "Social Bot Cluster %": "tab:purple",
     "Echo Chamber Strength": "tab:red"
 })
 
@@ -82,11 +122,11 @@ page = SolaraViz(
     create_model(),
     components=[
         make_space_component(agent_portrayal),
-        NetworkPlot,
-        RecommendationPlot,
+        DisplayModelInfo,
         EchoChamberPlot,
-        EchoChamberStrengthPlot,
-        EngagementPlot
+        RecommendationPlot,
+        NetworkPlot,
+        EngagementPlot,
     ],
     model_params=model_params,
 )
